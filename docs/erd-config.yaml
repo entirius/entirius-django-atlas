@@ -1,0 +1,31 @@
+# ERD configuration for django-atlas — consumed by `make erd APP=django_atlas`.
+# Output: D2 source committed to docs/erd/, rendered PNGs deployed alongside entirius-docs.
+app_label: django_atlas
+groups:
+  - name: core-registry
+    title: "Core Registry"
+    models:
+      - Source
+      - SourceSettings
+      - SourceProductLink
+  - name: feeds-and-import
+    title: "Feeds and Import"
+    models:
+      - SourceFeed
+      - SourceProduct
+      - ImportLog
+  - name: mapping
+    title: "Mapping"
+    models:
+      - SourceMappingProfile
+      - SourceAttributeMapping
+      - SourceCategoryMapping
+  - name: monitoring
+    title: "Monitoring"
+    models:
+      - IntegrationEvent
+      - SourceProductChangeLog
+  - name: observation-log
+    title: "Observation Log"
+    models:
+      - Observation

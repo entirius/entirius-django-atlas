@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<catalog>
+  <product>
+    <sku>SKU-001</sku>
+    <name>Office Chair Black</name>
+    <price currency="EUR">129.00</price>
+    <stock>42</stock>
+    <ean>5901234123457</ean>
+    <url>https://example.com/p/sku-001</url>
+    <images>
+      <img src="https://cdn.example.com/sku-001/main.jpg"/>
+      <img src="https://cdn.example.com/sku-001/alt.jpg"/>
+    </images>
+    <description>Adjustable office chair with lumbar support</description>
+    <manufacturer>FurnitureCo</manufacturer>
+    <category>furniture/chairs</category>
+  </product>
+  <product>
+    <sku>SKU-002</sku>
+    <name>Standing Desk 140x70</name>
+    <price currency="EUR">499.00</price>
+    <stock>10</stock>
+    <ean>5901234123464</ean>
+    <url>https://example.com/p/sku-002</url>
+    <images>
+      <img src="https://cdn.example.com/sku-002/main.jpg"/>
+      <img src="https://cdn.example.com/sku-002/alt.jpg"/>
+    </images>
+    <description>Electric height-adjustable desk</description>
+    <manufacturer>DeskWorks</manufacturer>
+    <category>furniture/desks</category>
+  </product>
+  <product>
+    <sku>SKU-003</sku>
+    <name>Monitor Arm Dual</name>
+    <price currency="EUR">89.50</price>
+    <stock>25</stock>
+    <ean>5901234123471</ean>
+    <url>https://example.com/p/sku-003</url>
+    <images>
+      <img src="https://cdn.example.com/sku-003/main.jpg"/>
+      <img src="https://cdn.example.com/sku-003/alt.jpg"/>
+    </images>
+    <description>Dual monitor articulating arm</description>
+    <manufacturer>MountPro</manufacturer>
+    <category>accessories/mounts</category>
+  </product>
+  <product>
+    <sku>SKU-004</sku>
+    <name>LED Desk Lamp</name>
+    <price currency="EUR">39.90</price>
+    <stock>0</stock>
+    <ean>5901234123488</ean>
+    <url>https://example.com/p/sku-004</url>
+    <images>
+      <img src="https://cdn.example.com/sku-004/main.jpg"/>
+      <img src="https://cdn.example.com/sku-004/alt.jpg"/>
+    </images>
+    <description>Touch-controlled LED lamp</description>
+    <manufacturer>LightCo</manufacturer>
+    <category>accessories/lighting</category>
+  </product>
+  <product>
+    <sku>SKU-005</sku>
+    <name>Cable Management Tray</name>
+    <price currency="EUR">19.00</price>
+    <stock>120</stock>
+    <ean>5901234123495</ean>
+    <url>https://example.com/p/sku-005</url>
+    <images>
+      <img src="https://cdn.example.com/sku-005/main.jpg"/>
+      <img src="https://cdn.example.com/sku-005/alt.jpg"/>
+    </images>
+    <description>Under-desk cable tray</description>
+    <manufacturer>CableCo</manufacturer>
+    <category>accessories/cable</category>
+  </product>
+</catalog>

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<catalog>
+  <product>
+    <sku>SKU-001</sku>
+    <price currency="EUR">119.00</price>
+    <stock>30</stock>
+  </product>
+  <product>
+    <sku>SKU-002</sku>
+    <price currency="EUR">499.00</price>
+    <stock>10</stock>
+  </product>
+  <product>
+    <sku>SKU-003</sku>
+    <price currency="EUR">79.00</price>
+    <stock>25</stock>
+  </product>
+</catalog>
