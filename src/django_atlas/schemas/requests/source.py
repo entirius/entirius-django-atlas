@@ -9,6 +9,8 @@ from pydantic import BaseModel, Field
 SourceKindLiteral = Literal["procurement", "monitoring", "enrichment"]
 SourceTypeLiteral = Literal["feed", "manual", "dropship"]
 ReviewModeLiteral = Literal["manual", "auto"]
+PrimaryStrategyLiteral = Literal["lowest_cost_with_stock", "highest_stock", "manual_only"]
+EvalFrequencyLiteral = Literal["daily", "hourly", "manual"]
 
 
 class SourceCreateRequest(BaseModel):
@@ -78,6 +80,19 @@ class SourceUpdateRequest(BaseModel):
             "(weight, ean, width, height, deep) even if its link is not primary. Default False."
         ),
         examples=[False],
+    )
+    # auto-primary selection knobs (CMS Overview tab).
+    primary_strategy: PrimaryStrategyLiteral | None = Field(
+        None, description="Auto-primary picker strategy", examples=["lowest_cost_with_stock"]
+    )
+    primary_switch_cooldown_hours: int | None = Field(
+        None, description="Minimum hours between auto-primary switches", examples=[24], ge=0
+    )
+    primary_switch_hysteresis_pct: int | None = Field(
+        None, description="Cost advantage percent required before switching primary", examples=[2], ge=0
+    )
+    eval_frequency: EvalFrequencyLiteral | None = Field(
+        None, description="Auto-primary cron evaluation frequency", examples=["daily"]
     )
 
 

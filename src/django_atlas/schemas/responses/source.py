@@ -43,6 +43,15 @@ class SourceResponse(BaseModel):
         ),
         examples=[False],
     )
+    # auto-primary selection knobs (CMS Overview tab).
+    primary_strategy: str = Field(description="Auto-primary picker strategy", examples=["lowest_cost_with_stock"])
+    primary_switch_cooldown_hours: int = Field(
+        description="Minimum hours between auto-primary switches", examples=[24]
+    )
+    primary_switch_hysteresis_pct: int = Field(
+        description="Cost advantage percent required before switching primary", examples=[2]
+    )
+    eval_frequency: str = Field(description="Auto-primary cron evaluation frequency", examples=["daily"])
     created_at: datetime = Field(description="Creation timestamp")
     modified_at: datetime = Field(description="Last update timestamp")
 

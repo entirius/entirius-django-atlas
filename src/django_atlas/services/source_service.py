@@ -41,6 +41,11 @@ _EDITABLE_FIELDS = frozenset(
         "currency",
         # primary-only physical writes opt-in.
         "allow_physical_writes_from_non_primary",
+        # auto-primary selection knobs (CMS Overview tab).
+        "primary_strategy",
+        "primary_switch_cooldown_hours",
+        "primary_switch_hysteresis_pct",
+        "eval_frequency",
     }
 )
 
