@@ -118,6 +118,22 @@ Persist is kind-aware, not connector-aware: `import_service._build_or_update_sp`
 `raw.cost`/`raw.attributes` onto `cost` / `observed_price` / `signals` per `Source.kind`; matched
 monitoring/enrichment rows additionally get an `Observation` per run.
 
+### Lookup provider
+
+`services/lookup_provider.py` is atlas's read boundary for the **django-lookup** module. Lookup loads
+it lazily from `LOOKUP_PROVIDERS = {"atlas_source_product": "django_atlas.services.lookup_provider"}`
+and calls duck-typed module-level functions (`iter_items`, `get_item`, `basic`, `detail_url`,
+`signal_specs`) — nothing from django-lookup is imported here, `ProviderItem` / `BasicData` are
+mirrored so an optional consumer never becomes an atlas dependency.
+
+Items are the **candidate pool**: `real_product IS NULL` and status not `rejected`. `ref` =
+`<source.idx>:<external_id>` (stable across re-imports); `detail_url` resolves the pk, the admin API
+addressing source products by pk only. brand / mpn / physicals come from `data` through the source's
+active `SourceAttributeMapping` rows (modifier applied) and fall back to conventional keys
+(`brand` / `manufacturer`, `mpn`, `weight`, …). Images stay remote URLs — never fetched here. The
+single signal spec re-runs the provider on every `SourceProduct` save; linking one drops it from the
+pool, which is how lookup deletes its fingerprint row.
+
 ### Scheduling
 
 `SourceFeed.schedule_cron` (5-field cron) is consumed by the `django_atlas.dispatch_scheduled_feeds`
