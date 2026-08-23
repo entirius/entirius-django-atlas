@@ -154,3 +154,4 @@ def test_signal_spec_resolves_the_ref(source):
 
     assert (spec["model"], spec["signal"]) == ("django_atlas.SourceProduct", "post_save")
     assert spec["ref"](source_product) == "acme:EXT-8"
+    assert spec["watch"] == ["data_hash", "real_product_id", "status"]

@@ -105,10 +105,18 @@ def detail_url(ref: str) -> str:
 def signal_specs() -> list[dict]:
     """Senders django-lookup connects so a fingerprint follows the catalog (see its signals.py).
 
-    Every save is enqueued: the task rebuilds the row from the current data (a changed `data_hash`)
-    or deletes it (`real_product` set, status rejected). Deciding here would need the pre-save row.
+    Only a changed `data_hash` (new data), a re-pointed `real_product` (linked/unlinked) or a status
+    change matter; the task then rebuilds the row or deletes it. Imports save thousands of rows —
+    `watch` keeps them from becoming a task each.
     """
-    return [{"model": "django_atlas.SourceProduct", "signal": "post_save", "ref": ref_for}]
+    return [
+        {
+            "model": "django_atlas.SourceProduct",
+            "signal": "post_save",
+            "ref": ref_for,
+            "watch": ["data_hash", "real_product_id", "status"],
+        }
+    ]
 
 
 def ref_for(source_product: SourceProduct) -> str:
