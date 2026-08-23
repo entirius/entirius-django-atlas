@@ -134,6 +134,24 @@ active `SourceAttributeMapping` rows (modifier applied) and fall back to convent
 single signal spec re-runs the provider on every `SourceProduct` save; linking one drops it from the
 pool, which is how lookup deletes its fingerprint row.
 
+### Enrichment adapter (duplicate_in_pim)
+
+`services/enrichment_adapter.py` is atlas's write boundary for the **django-enrichment** bus, loaded
+lazily from `ENRICHMENT_ADAPTERS = {"atlas": "django_atlas.services.enrichment_adapter"}`. One check
+(`duplicate_in_pim`) and one target kind (`link_to_realproduct`): `find_gaps` runs `lookup.check` per
+unlinked source product and proposes the best `match`/`review` candidate, `apply` sets
+`SourceProduct.real_product` (+ a `linked_via_lookup_proposal` event), `revert` clears it only while
+the link is still the one it wrote, and the optional `on_reject` hook records the operator's "no" in
+django-lookup's `DedupDecision` log so the pair is never proposed again. `subject_ref` is the lookup
+provider's ref (`<source.idx>:<external_id>`).
+
+v1 is **always a proposal** (decision #3) — nothing is auto-linked and the EAN auto-link in
+`pim_writer` is untouched. `Source.auto_accept_min_score` is the documented seam for a later version
+and is read by no code path. django-lookup stays a **soft** dependency: every import of it sits
+inside a function, and the adapter tests fake those four touchpoints (the test suite does not install
+django-lookup). Fixture: `fixtures/enrichment_spawn_rule_duplicate_in_pim.json` (the SpawnRule the
+operator runs).
+
 ### Scheduling
 
 `SourceFeed.schedule_cron` (5-field cron) is consumed by the `django_atlas.dispatch_scheduled_feeds`
