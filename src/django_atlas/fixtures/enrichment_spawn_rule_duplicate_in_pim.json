@@ -14,7 +14,8 @@
       "cooldown_days": 1,
       "auto": false,
       "active": true,
-      "created_at": "2026-08-23T00:00:00Z"
+      "created_at": "2026-08-23T00:00:00Z",
+      "modified_at": "2026-08-23T00:00:00Z"
     }
   }
 ]
