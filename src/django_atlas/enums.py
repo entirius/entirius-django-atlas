@@ -78,6 +78,8 @@ class EventType(models.TextChoices):
     MANUAL_UNLINK_FROM_REALPRODUCT = "manual_unlink_from_realproduct", "Manual unlink from RealProduct"
     # operator accepted a duplicate_in_pim proposal (services/enrichment_adapter.py)
     LINKED_VIA_LOOKUP_PROPOSAL = "linked_via_lookup_proposal", "Linked via lookup proposal"
+    # operator linked from the CMS "find in PIM" box (services/product_link_service.py)
+    LINKED_VIA_LOOKUP_UI = "linked_via_lookup_ui", "Linked via lookup UI"
     # auto-primary selection
     PRIMARY_SOURCE_SWITCHED = "primary_source_switched", "Primary source switched"
     PRIMARY_SOURCE_EMERGENCY_SWITCH = "primary_source_emergency_switch", "Primary source emergency switch"

@@ -26,10 +26,12 @@ from django_atlas.schemas.requests.product import (
     BulkApproveRequest,
     BulkRejectRequest,
     BulkRequeueRequest,
+    LinkToRealProductRequest,
     SourceProductPartialUpdateRequest,
 )
 from django_atlas.schemas.responses.product import (
     BulkActionResponse,
+    LinkToRealProductResponse,
     PushResponse,
     SourceProductListResponse,
     SourceProductResponse,
@@ -233,6 +235,26 @@ class SourceProductViewSet(viewsets.ViewSet):
             raise_as_drf(exc)
         sp = product_service.get_sp(pk)
         return Response({"pushed_channels_count": len(products), "status": sp.status, "events": events})
+
+    @extend_schema(
+        tags=_TAGS,
+        summary="Link SP to an existing RealProduct",
+        request=LinkToRealProductRequest,
+        responses={200: LinkToRealProductResponse, 400: None, 404: None},
+    )
+    def link_to_realproduct(self, request: Request, pk: int) -> Response:
+        try:
+            data = LinkToRealProductRequest(**request.data)
+        except ValidationError as exc:
+            raise_pydantic_as_drf(exc)
+        events: list[dict] = []
+        try:
+            result = product_link_service.link_sp_to_realproduct(
+                pk, data.real_product_sku, request.user, event_sink=events
+            )
+        except ValueError as exc:
+            raise_as_drf(exc)
+        return Response({**result, "events": events})
 
     @extend_schema(
         tags=_TAGS,

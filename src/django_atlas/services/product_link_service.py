@@ -13,13 +13,18 @@ Frozen decisions:
 """
 
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from django.contrib.auth.models import AbstractBaseUser
 from django.db import transaction
 from django.db.models import QuerySet
 
 from django_atlas.models import Source, SourceProductLink
+
+if TYPE_CHECKING:  # annotations only — both models are imported lazily inside the functions
+    from django_pim.models.real_product import RealProduct
+
+    from django_atlas.models import SourceProduct
 
 logger = logging.getLogger(__name__)
 
@@ -190,6 +195,115 @@ def unset_primary(pk: int) -> SourceProductLink:
     link.is_primary = False
     link.save(update_fields=["is_primary", "modified_at"])
     return link
+
+
+def link_sp_to_realproduct(
+    sp_pk: int,
+    real_product_sku: str,
+    user: AbstractBaseUser | None,
+    *,
+    event_sink: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Operator link ("find in PIM" box): attach an unlinked SP to an EXISTING RealProduct.
+
+    Inverse of `unlink_sp_from_realproduct`, and the reason a bare `create_link` is not enough:
+    only `SourceProduct.real_product` takes the SP out of the dedup candidate pool
+    (`lookup_provider.candidates()` serves `real_product IS NULL`), so the attach and the
+    `SourceProductLink` must happen together or the row keeps being re-proposed and a later
+    auto-push spawns a duplicate RealProduct.
+
+    Links to an EXISTING RealProduct are allowed for every `Source.kind` (no PIM row is created),
+    so no `kind_guard` gate here — `is_primary` stays False and is the operator's separate call.
+
+    Side effects: IntegrationEvent `linked_via_lookup_ui` (also appended to `event_sink`) and a
+    best-effort `accepted` verdict in django-lookup's dedup log (score 0 — a manual link carries
+    no machine score).
+
+    Raises ValueError when the SP or the SKU does not exist, or when the SP is already linked.
+    """
+    from django_pim.models.real_product import RealProduct
+
+    from django_atlas.models import SourceProduct
+
+    try:
+        sp = SourceProduct.objects.select_related("source", "real_product").get(pk=sp_pk)
+    except SourceProduct.DoesNotExist as exc:
+        raise ValueError(f"SourceProduct with pk={sp_pk} not found") from exc
+    if sp.real_product_id is not None:
+        raise ValueError(
+            f"SourceProduct {sp_pk} is already linked to RealProduct '{sp.real_product.sku}' — unlink it first"
+        )
+    real_product = RealProduct.objects.filter(sku__iexact=real_product_sku).first()
+    if real_product is None:
+        raise ValueError(f"PIM RealProduct with SKU '{real_product_sku}' not found")
+
+    link = _attach_sp(sp, real_product, event_sink)
+    try:
+        _record_link_verdict(sp, real_product.sku, user)
+    except Exception:  # noqa: BLE001 — django-lookup is a soft dep; its log must never block a link
+        logger.warning("dedup_log.record failed for link_to_realproduct", exc_info=True)
+    return {"real_product_sku": real_product.sku, "link_pk": link.pk}
+
+
+def _attach_sp(
+    sp: "SourceProduct", real_product: "RealProduct", event_sink: list[dict[str, Any]] | None
+) -> SourceProductLink:
+    """One transaction: SP -> RealProduct, the (sku, source) link, and the audit event."""
+    from django_atlas.enums import EventSeverity, EventType
+    from django_atlas.services import event_service
+
+    message = f"SP {sp.id} linked to RealProduct {real_product.sku} from the lookup UI"
+    details = {
+        "source_product_id": sp.id,
+        "source_idx": sp.source.idx,
+        "real_product_sku": real_product.sku,
+    }
+    with transaction.atomic():
+        link, _ = SourceProductLink.objects.get_or_create(
+            real_product_sku=real_product.sku, source=sp.source, defaults={"external_id": sp.external_id}
+        )
+        sp.real_product = real_product
+        sp.save(update_fields=["real_product", "modified_at"])
+        event_service.record(
+            event_type=EventType.LINKED_VIA_LOOKUP_UI.value,
+            severity=EventSeverity.INFO.value,
+            source=sp.source,
+            source_product=sp,
+            message=message,
+            details=details,
+        )
+    if event_sink is not None:
+        event_sink.append(
+            {
+                "event_type": EventType.LINKED_VIA_LOOKUP_UI.value,
+                "severity": EventSeverity.INFO.value,
+                "message": message,
+                "details": details,
+            }
+        )
+    return link
+
+
+def _record_link_verdict(sp: "SourceProduct", real_product_sku: str, user: AbstractBaseUser | None) -> None:
+    """Log the operator's "same product" answer in django-lookup (calibration + never re-propose).
+
+    Soft-dependency touchpoint, faked in the tests exactly like the enrichment adapter's own.
+    """
+    from django_lookup.services import dedup_log
+
+    from django_atlas.services import enrichment_adapter, lookup_provider
+
+    dedup_log.record(
+        dedup_log.Verdict(
+            subject_ref=lookup_provider.ref_for(sp),
+            candidate_kind=enrichment_adapter.PIM_KIND,
+            candidate_ref=real_product_sku,
+            decision_human=enrichment_adapter.DECISION_ACCEPTED,
+            decision_auto="",
+            score=0,
+        ),
+        user=user,
+    )
 
 
 def unlink_sp_from_realproduct(
