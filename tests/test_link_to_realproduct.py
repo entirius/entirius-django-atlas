@@ -123,6 +123,24 @@ def test_link_survives_django_lookup_being_absent(admin_user, real_product, sour
     assert source_product.real_product_id == real_product.id
 
 
+def test_link_surfaces_a_real_dedup_log_failure(admin_user, real_product, source_product, monkeypatch):
+    """Only the module being absent (ImportError) or unregistered in this dev checkout
+    (RuntimeError, matching qms_writer._qms_available's own precedent) is swallowed — a genuine
+    dedup_log failure (e.g. a DB error) must not be."""
+    monkeypatch.setattr(
+        product_link_service,
+        "_record_link_verdict",
+        lambda sp, sku, user: (_ for _ in ()).throw(ConnectionError("dedup_log unreachable")),
+    )
+
+    with pytest.raises(ConnectionError, match="dedup_log unreachable"):
+        product_link_service.link_sp_to_realproduct(source_product.pk, real_product.sku, admin_user)
+
+    # the link itself already happened before the verdict write — not rolled back by this failure.
+    source_product.refresh_from_db()
+    assert source_product.real_product_id == real_product.id
+
+
 def test_link_raises_when_sp_missing(admin_user, real_product):
     with pytest.raises(ValueError, match="not found"):
         product_link_service.link_sp_to_realproduct(99999, real_product.sku, admin_user)

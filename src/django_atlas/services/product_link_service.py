@@ -240,8 +240,14 @@ def link_sp_to_realproduct(
     link = _attach_sp(sp, real_product, event_sink)
     try:
         _record_link_verdict(sp, real_product.sku, user)
-    except Exception:  # noqa: BLE001 — django-lookup is a soft dep; its log must never block a link
-        logger.warning("dedup_log.record failed for link_to_realproduct", exc_info=True)
+    except (ImportError, RuntimeError):
+        # django-lookup is a soft dep — its absence must never block a link. RuntimeError
+        # alongside ImportError matches qms_writer._qms_available's own precedent: Django
+        # raises RuntimeError (not ImportError) when a module is on PYTHONPATH but not in
+        # INSTALLED_APPS — the common multi-repo dev-checkout shape, not a real failure. Any
+        # OTHER exception (an actual dedup_log bug, a DB error) is the operator's verdict
+        # getting lost silently, so it must surface instead of being swallowed here.
+        logger.warning("django-lookup not installed — dedup_log.record skipped for link_to_realproduct")
     return {"real_product_sku": real_product.sku, "link_pk": link.pk}
 
 
