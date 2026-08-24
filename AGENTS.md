@@ -83,6 +83,17 @@ Only `procurement` may write to PIM — enforced at three independent points: (1
 `kind_guard.assert_push_allowed()`, (3) `pricemanager_writer.log_cost` early-returns for
 non-procurement. Manual links to EXISTING RealProducts stay allowed for non-procurement sources.
 
+### Push target resolution
+
+`pim_writer._resolve_push_target` decides which RealProduct a push writes to, and an existing
+`SourceProduct.real_product` outranks every other rule: whatever attached the SP (lookup UI,
+enrichment proposal, an earlier push) already chose the target, so the generated SKU and the EAN
+auto-match are both skipped and an `auto_linked_to_existing_realproduct` event
+(`matched_via: existing_link`) records why. Only an unlinked SP walks the legacy path — EAN
+auto-match first, `generate_sku` + `get_or_create` after. `force_repush_to_channel` mirrors it;
+without that, a lookup-linked SP would push onto a freshly generated SKU and spawn the duplicate the
+link exists to prevent.
+
 ### Observation log
 
 Append-only — no update/delete path in services. `sku` is a plain CharField (never FK).
