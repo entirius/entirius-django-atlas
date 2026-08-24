@@ -126,7 +126,9 @@ def test_link_survives_django_lookup_being_absent(admin_user, real_product, sour
 def test_link_surfaces_a_real_dedup_log_failure(admin_user, real_product, source_product, monkeypatch):
     """Only the module being absent (ImportError) or unregistered in this dev checkout
     (RuntimeError, matching qms_writer._qms_available's own precedent) is swallowed — a genuine
-    dedup_log failure (e.g. a DB error) must not be."""
+    dedup_log failure (e.g. a DB error) must not be, and now rolls the link back with it: the
+    verdict write shares `_attach_sp`'s transaction, so the operator never sees a link that
+    "succeeded" behind a 500 whose retry then fails with "already linked" (checkpoint BG-10 #16)."""
     monkeypatch.setattr(
         product_link_service,
         "_record_link_verdict",
@@ -136,9 +138,11 @@ def test_link_surfaces_a_real_dedup_log_failure(admin_user, real_product, source
     with pytest.raises(ConnectionError, match="dedup_log unreachable"):
         product_link_service.link_sp_to_realproduct(source_product.pk, real_product.sku, admin_user)
 
-    # the link itself already happened before the verdict write — not rolled back by this failure.
+    # the whole attach rolled back with the failed verdict write — a clean retry is now possible.
     source_product.refresh_from_db()
-    assert source_product.real_product_id == real_product.id
+    assert source_product.real_product_id is None
+    assert not SourceProductLink.objects.filter(real_product_sku=real_product.sku).exists()
+    assert not IntegrationEvent.objects.filter(event_type=EventType.LINKED_VIA_LOOKUP_UI.value).exists()
 
 
 def test_link_raises_when_sp_missing(admin_user, real_product):

@@ -215,9 +215,11 @@ def link_sp_to_realproduct(
     Links to an EXISTING RealProduct are allowed for every `Source.kind` (no PIM row is created),
     so no `kind_guard` gate here — `is_primary` stays False and is the operator's separate call.
 
-    Side effects: IntegrationEvent `linked_via_lookup_ui` (also appended to `event_sink`) and a
-    best-effort `accepted` verdict in django-lookup's dedup log (score 0 — a manual link carries
-    no machine score).
+    Side effects, all inside one transaction (see `_attach_sp`): IntegrationEvent
+    `linked_via_lookup_ui` (also appended to `event_sink`) and a best-effort `accepted` verdict in
+    django-lookup's dedup log (score 0 — a manual link carries no machine score). A genuine dedup_log
+    failure therefore rolls the link back too, instead of leaving the operator a link that "succeeded"
+    behind a 500 whose retry then fails with "already linked".
 
     Raises ValueError when the SP or the SKU does not exist, or when the SP is already linked.
     """
@@ -237,24 +239,19 @@ def link_sp_to_realproduct(
     if real_product is None:
         raise ValueError(f"PIM RealProduct with SKU '{real_product_sku}' not found")
 
-    link = _attach_sp(sp, real_product, event_sink)
-    try:
-        _record_link_verdict(sp, real_product.sku, user)
-    except (ImportError, RuntimeError):
-        # django-lookup is a soft dep — its absence must never block a link. RuntimeError
-        # alongside ImportError matches qms_writer._qms_available's own precedent: Django
-        # raises RuntimeError (not ImportError) when a module is on PYTHONPATH but not in
-        # INSTALLED_APPS — the common multi-repo dev-checkout shape, not a real failure. Any
-        # OTHER exception (an actual dedup_log bug, a DB error) is the operator's verdict
-        # getting lost silently, so it must surface instead of being swallowed here.
-        logger.warning("django-lookup not installed — dedup_log.record skipped for link_to_realproduct")
+    link = _attach_sp(sp, real_product, user, event_sink)
     return {"real_product_sku": real_product.sku, "link_pk": link.pk}
 
 
 def _attach_sp(
-    sp: "SourceProduct", real_product: "RealProduct", event_sink: list[dict[str, Any]] | None
+    sp: "SourceProduct",
+    real_product: "RealProduct",
+    user: AbstractBaseUser | None,
+    event_sink: list[dict[str, Any]] | None,
 ) -> SourceProductLink:
-    """One transaction: SP -> RealProduct, the (sku, source) link, and the audit event."""
+    """One transaction: SP -> RealProduct, the (sku, source) link, the audit event and the
+    dedup-log verdict — a genuine dedup_log failure must roll the link back, not leave it behind a
+    500 the operator cannot retry (checkpoint BG-10 #16)."""
     from django_atlas.enums import EventSeverity, EventType
     from django_atlas.services import event_service
 
@@ -278,6 +275,17 @@ def _attach_sp(
             message=message,
             details=details,
         )
+        try:
+            _record_link_verdict(sp, real_product.sku, user)
+        except (ImportError, RuntimeError):
+            # django-lookup is a soft dep — its absence must never block a link, nor roll it back.
+            # RuntimeError alongside ImportError matches qms_writer._qms_available's own precedent:
+            # Django raises RuntimeError (not ImportError) when a module is on PYTHONPATH but not in
+            # INSTALLED_APPS — the common multi-repo dev-checkout shape, not a real failure. Any
+            # OTHER exception (an actual dedup_log bug, a DB error) is caught by nothing here on
+            # purpose: it must abort this atomic block, rolling the link back with it, and surface
+            # to the caller — the operator's verdict getting lost silently is worse than a 500.
+            logger.warning("django-lookup not installed — dedup_log.record skipped for link_to_realproduct")
     if event_sink is not None:
         event_sink.append(
             {
