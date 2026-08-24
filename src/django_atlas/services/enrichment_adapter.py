@@ -108,7 +108,9 @@ def apply(proposal) -> None:
     sku = value.get("real_product_sku")
     if not sku:
         raise ValueError("link_to_realproduct apply requires a 'real_product_sku'")
-    real_product = RealProduct.objects.filter(sku=sku).first()
+    # `sku__iexact`: RealProduct SKUs are unique case-insensitively and the link service resolves them
+    # the same way — an exact filter here would accept a proposal the UI link path resolves fine.
+    real_product = RealProduct.objects.filter(sku__iexact=sku).first()
     if real_product is None:
         raise ValueError(f"RealProduct {sku!r} does not exist — {proposal.subject_ref!r} was not linked")
     source_product = _resolve(proposal.subject_ref, proposal.target_locator)
@@ -233,6 +235,7 @@ def _check_against_pim(source_product: SourceProduct) -> list[dict]:
     if not any((item.gtin, item.mpn, item.name_by_lang)):
         return []  # a feed row with no identifier at all — nothing to search on (and nothing to import)
 
+    from django_lookup.enums import DecisionSource
     from django_lookup.schemas.requests.lookup import Attrs, LookupQuery
     from django_lookup.services import lookup_service
 
@@ -245,7 +248,9 @@ def _check_against_pim(source_product: SourceProduct) -> list[dict]:
         scope=[PIM_KIND],
         limit=_CANDIDATE_LIMIT,
     )
-    return [_candidate(hit) for hit in lookup_service.check(query).candidates]
+    # Tag the log with the caller: a bulk enricher run must stay separable from operator API traffic.
+    result = lookup_service.check(query, source=DecisionSource.PROPOSAL)
+    return [_candidate(hit) for hit in result.candidates]
 
 
 def _candidate(hit) -> dict:
