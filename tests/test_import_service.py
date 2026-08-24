@@ -310,15 +310,26 @@ def test_full_sync_last_synced_at_updates_each_run():
 # path for that gap; these tests cover it directly (checkpoint BG-10 #12).
 
 
-def _install_fake_lookup_tasks(monkeypatch) -> MagicMock:
-    """Inject a fake `django_lookup.tasks.refresh_fingerprint` — a MagicMock we assert calls on."""
+_TEST_REFRESH_TASK_BATCH = 200  # mirrors django_lookup.constants.REFRESH_TASK_BATCH for the fake
+
+
+def _install_fake_lookup_tasks(monkeypatch, *, batch: int = _TEST_REFRESH_TASK_BATCH) -> MagicMock:
+    """Inject a fake `django_lookup.tasks.refresh_fingerprints` — a MagicMock we assert calls on."""
     fake_task = MagicMock()
     fake_pkg = types.ModuleType("django_lookup")
+    fake_constants = types.ModuleType("django_lookup.constants")
+    fake_constants.REFRESH_TASK_BATCH = batch
     fake_tasks = types.ModuleType("django_lookup.tasks")
-    fake_tasks.refresh_fingerprint = fake_task
+    fake_tasks.refresh_fingerprints = fake_task
     monkeypatch.setitem(sys.modules, "django_lookup", fake_pkg)
+    monkeypatch.setitem(sys.modules, "django_lookup.constants", fake_constants)
     monkeypatch.setitem(sys.modules, "django_lookup.tasks", fake_tasks)
     return fake_task
+
+
+def _flat_refs(fake_task: MagicMock) -> set[str]:
+    """Every ref across every batched `.delay(kind, [refs...])` call."""
+    return {ref for call in fake_task.delay.call_args_list for ref in call.args[1]}
 
 
 @pytest.mark.django_db
@@ -331,7 +342,8 @@ def test_full_sync_enqueues_lookup_refresh_for_new_rows(monkeypatch):
 
     calls = fake_task.delay.call_args_list
     assert {call.args[0] for call in calls} == {lookup_provider.KIND}
-    assert {call.args[1] for call in calls} == {f"{feed.source.idx}:SKU-00{i}" for i in range(1, 6)}
+    assert _flat_refs(fake_task) == {f"{feed.source.idx}:SKU-00{i}" for i in range(1, 6)}
+    assert len(calls) == 1  # 5 rows, well under the batch size -> one publish
 
 
 @pytest.mark.django_db
@@ -361,8 +373,7 @@ def test_full_sync_lookup_refresh_only_the_changed_row(monkeypatch):
     with _patched_get(modified):
         import_service.execute_feed(feed)
 
-    refs = {call.args[1] for call in fake_task.delay.call_args_list}
-    assert refs == {f"{feed.source.idx}:SKU-001"}
+    assert _flat_refs(fake_task) == {f"{feed.source.idx}:SKU-001"}
 
 
 @pytest.mark.django_db
@@ -392,6 +403,62 @@ def test_full_sync_lookup_refresh_broker_failure_does_not_break_import(monkeypat
 
     assert log.status == LogStatus.SUCCESS.value
     assert SourceProduct.objects.filter(source=feed.source).count() == 5
+
+
+@pytest.mark.django_db
+def test_full_sync_enqueues_lookup_refresh_in_chunks_not_per_row(monkeypatch):
+    """A 250-row import must publish ceil(250/BATCH) times, never once per row — the whole point
+    of the batched task (checkpoint: MAJOR — per-row Celery fan-out)."""
+    fake_task = _install_fake_lookup_tasks(monkeypatch, batch=100)
+    source = SourceFactory()
+    feed = FeedFactory(source=source, feed_config=_FEED_CONFIG)
+
+    def _gen_raws():
+        for i in range(250):
+            yield RawProduct(external_id=f"CHUNK-{i:04d}", name=f"P{i}")
+
+    connector = _sync_connector_mock()
+    connector.is_async = False
+    connector.fetch.return_value = _gen_raws()
+    import_service.process_full_sync(feed, connector, log_service.start_import_log(feed, mode="full"))
+
+    calls = fake_task.delay.call_args_list
+    assert len(calls) == 3  # ceil(250 / 100), not 250
+    assert [len(call.args[1]) for call in calls] == [100, 100, 50]
+    assert len(_flat_refs(fake_task)) == 250
+
+
+@pytest.mark.django_db
+def test_full_sync_delisting_enqueues_a_refresh_for_the_stale_ref(monkeypatch):
+    """A non-pushed row delisted to REJECTED must still get its fingerprint refreshed — REJECTED
+    rows are excluded from lookup_provider.candidates(), so the refresh is how the now-stale row
+    gets deleted (checkpoint: MAJOR — the freshness gap was only half closed)."""
+    source = SourceFactory()
+    feed = FeedFactory(source=source, feed_config=_FEED_CONFIG)
+    SourceProductFactory(source=source, feed=feed, external_id="GONE-001", status=ProductStatus.NEW.value)
+
+    fake_task = _install_fake_lookup_tasks(monkeypatch)
+    with _patched_get(SAMPLE_FULL):  # feed has SKU-001..005, not GONE-001
+        import_service.execute_feed(feed)
+
+    assert f"{source.idx}:GONE-001" in _flat_refs(fake_task)
+
+
+@pytest.mark.django_db
+def test_full_sync_rename_enqueues_a_refresh_for_the_pre_rename_ref(monkeypatch):
+    """An EAN-matched rename must enqueue the pre-rename ref too, or its row is orphaned — nothing
+    else will ever refresh it again under the old external_id (checkpoint: MAJOR)."""
+    source = SourceFactory()
+    feed = FeedFactory(source=source, feed_config=_FEED_CONFIG)
+    SourceProductFactory(source=source, feed=feed, external_id="OLD-001", ean="5901234123457", name="legacy")
+
+    fake_task = _install_fake_lookup_tasks(monkeypatch)
+    with _patched_get(SAMPLE_FULL):
+        import_service.execute_feed(feed)
+
+    refs = _flat_refs(fake_task)
+    assert f"{source.idx}:OLD-001" in refs  # pre-rename ref
+    assert f"{source.idx}:SKU-001" in refs  # post-rename ref
 
 
 # ============== DELTA SYNC ==============

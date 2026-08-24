@@ -118,11 +118,17 @@ def _flush_audit_drafts(drafts: list[dict[str, Any]], *, context: str) -> None:
         logger.warning("audit_service.log_changes_bulk failed in %s", context, exc_info=True)
 
 
-def _lookup_ref(source: Source, sp: SourceProduct) -> str:
-    """Ref format `lookup_provider` serves, built from `source` (already in scope for a whole
-    batch) rather than `sp.source` — the latter is uncached for existing rows and would cost a
-    query per SourceProduct."""
-    return f"{source.idx}{lookup_provider.REF_SEPARATOR}{sp.external_id}"
+def _lookup_ref(source: Source, external_id: str) -> str:
+    """Ref format `lookup_provider.ref_for` owns — delegate instead of re-implementing it.
+
+    Built from a bare `external_id` (not a `SourceProduct` instance) rather than `lookup_provider.
+    ref_for(sp)` directly: `sp.source` is uncached for existing rows and would cost a query per
+    SourceProduct, and a rename's pre-rename ref has no row to build one from at all (the row's own
+    `external_id` has already been overwritten by `_build_or_update_sp`). Constructing a transient,
+    unsaved `SourceProduct(source=source, external_id=external_id)` costs no query — passing a model
+    instance for a FK at construction time caches it — so this covers both cases for free.
+    """
+    return lookup_provider.ref_for(SourceProduct(source=source, external_id=external_id))
 
 
 def _enqueue_lookup_refresh(refs: list[str]) -> None:
@@ -135,21 +141,29 @@ def _enqueue_lookup_refresh(refs: list[str]) -> None:
     `django_lookup.signals._enqueue`: import guarded so atlas keeps working without django-lookup
     installed, and broker failures are swallowed — a catalog write must never fail because the
     lookup queue is unreachable, and a dropped enqueue is recoverable with `lookup_reconcile`.
+
+    Publishes in chunks of `REFRESH_TASK_BATCH` instead of one `.delay()` per ref: a first full sync
+    of a large feed changes every row, and one AMQP publish (and one worker task) per row would flood
+    the `lookup` queue shared with image embedding. `django_lookup.tasks.refresh_fingerprints` is the
+    batched twin of the single-ref task — same idempotent semantics, a thin loop underneath.
     """
     if not refs:
         return
     try:
-        from django_lookup.tasks import refresh_fingerprint
+        from django_lookup.constants import REFRESH_TASK_BATCH
+        from django_lookup.tasks import refresh_fingerprints
     except (ImportError, RuntimeError):
         # RuntimeError alongside ImportError matches qms_writer._qms_available's own
         # precedent: Django raises RuntimeError (not ImportError) when a module is on
         # PYTHONPATH but not in INSTALLED_APPS — the common multi-repo dev-checkout shape.
         return
-    for ref in refs:
+    for chunk in _batched(iter(refs), REFRESH_TASK_BATCH):
         try:
-            refresh_fingerprint.delay(lookup_provider.KIND, ref)
+            refresh_fingerprints.delay(lookup_provider.KIND, chunk)
         except Exception:  # noqa: BLE001 — broker errors must not break the import pipeline
-            logger.warning("lookup: could not enqueue refresh for %s — run lookup_reconcile", ref, exc_info=True)
+            logger.warning(
+                "lookup: could not enqueue refresh for %d refs — run lookup_reconcile", len(chunk), exc_info=True
+            )
 
 
 def _hash_attributes(attributes: dict[str, Any]) -> str:
@@ -288,8 +302,13 @@ def _build_or_update_sp(
     existing_by_external: dict[str, SourceProduct],
     existing_by_ean: dict[str, SourceProduct],
     started_at: datetime,
-) -> tuple[SourceProduct | None, str]:
-    """Returns (instance, change_kind) where change_kind ∈ {'new','updated','unchanged'}."""
+) -> tuple[SourceProduct | None, str, str | None]:
+    """Returns (instance, change_kind, rename_from) where change_kind ∈ {'new','updated','unchanged'}.
+
+    `rename_from` is the external_id the EAN match matched under, only when this row's external_id
+    just changed (never set for 'new'/'unchanged') — the caller needs it to enqueue a lookup refresh
+    for the pre-rename ref too, whose row this write orphans otherwise.
+    """
     new_hash = _hash_attributes(raw.attributes)
     sp = existing_by_external.get(raw.external_id)
     rename_from: str | None = None
@@ -300,24 +319,28 @@ def _build_or_update_sp(
             rename_from = candidate.external_id
 
     if sp is None:
-        return SourceProduct(
-            source=source,
-            feed=feed,
-            external_id=raw.external_id,
-            external_id_history=[],
-            name=raw.name,
-            **_kind_routed_fields(source.kind, raw),
-            currency=raw.currency or "",
-            stock=raw.stock,
-            ean=raw.ean or "",
-            url=raw.url or "",
-            image_urls=list(raw.images),
-            data=dict(raw.attributes),
-            data_hash=new_hash,
-            status=ProductStatus.NEW.value,
-            last_synced_at=started_at,
-            data_changed_at=started_at,
-        ), "new"
+        return (
+            SourceProduct(
+                source=source,
+                feed=feed,
+                external_id=raw.external_id,
+                external_id_history=[],
+                name=raw.name,
+                **_kind_routed_fields(source.kind, raw),
+                currency=raw.currency or "",
+                stock=raw.stock,
+                ean=raw.ean or "",
+                url=raw.url or "",
+                image_urls=list(raw.images),
+                data=dict(raw.attributes),
+                data_hash=new_hash,
+                status=ProductStatus.NEW.value,
+                last_synced_at=started_at,
+                data_changed_at=started_at,
+            ),
+            "new",
+            None,
+        )
 
     physical_changed = _detect_physical_change(raw.attributes, sp.data)
     data_changed = sp.data_hash != new_hash
@@ -347,8 +370,8 @@ def _build_or_update_sp(
         sp.physical_changed_at = started_at
 
     if rename_from is not None or data_changed or physical_changed:
-        return sp, "updated"
-    return sp, "unchanged"
+        return sp, "updated", rename_from
+    return sp, "unchanged", None
 
 
 _FULL_SYNC_UPDATE_FIELDS = [
@@ -413,7 +436,7 @@ def _process_full_sync_batch(
             prev_sp = existing_by_ean.get(raw.ean)
         prev_snapshot = _snapshot_for_audit(prev_sp)
         try:
-            sp, kind = _build_or_update_sp(
+            sp, kind, rename_from = _build_or_update_sp(
                 source=source,
                 feed=feed,
                 raw=raw,
@@ -430,11 +453,16 @@ def _process_full_sync_batch(
         if kind == "new":
             to_create.append(sp)
             counts["new_count"] += 1
-            lookup_refs.append(_lookup_ref(source, sp))
+            lookup_refs.append(_lookup_ref(source, sp.external_id))
         elif kind == "updated":
             to_update.append(sp)
             counts["updated_count"] += 1
-            lookup_refs.append(_lookup_ref(source, sp))
+            lookup_refs.append(_lookup_ref(source, sp.external_id))
+            if rename_from is not None:
+                # The pre-rename ref's own row is now orphaned — nothing else will ever refresh it
+                # again under its old external_id, and a refresh of a ref the provider no longer
+                # serves under that ref is exactly how django-lookup deletes the stale row.
+                lookup_refs.append(_lookup_ref(source, rename_from))
         else:
             # unchanged still updates last_synced_at
             to_update.append(sp)
@@ -508,9 +536,16 @@ def process_full_sync(feed: SourceFeed, connector: BaseConnector, log: ImportLog
 
     # Non-pushed stale rows: uniform status transition, no per-row side effect needed
     # -> single bulk UPDATE instead of an O(N) per-row .save() loop (mass-delisting path).
-    counts["delisted_count"] = stale_qs.filter(status__in=_NON_PUSHED_DELIST_TARGETS).update(
-        status=ProductStatus.REJECTED.value, modified_at=timezone.now()
-    )
+    stale_non_pushed = stale_qs.filter(status__in=_NON_PUSHED_DELIST_TARGETS)
+    # Collected BEFORE the bulk write: a bulk UPDATE fires no post_save either, so without this a
+    # delisted row keeps its fingerprint and stays proposable for a product that vanished from the
+    # feed. REJECTED is excluded from lookup_provider.candidates(), so refreshing these refs after
+    # the status flip is how django-lookup deletes the now-stale rows.
+    delisted_refs = [
+        _lookup_ref(source, external_id) for external_id in stale_non_pushed.values_list("external_id", flat=True)
+    ]
+    counts["delisted_count"] = stale_non_pushed.update(status=ProductStatus.REJECTED.value, modified_at=timezone.now())
+    _enqueue_lookup_refresh(delisted_refs)
 
     # Pushed stale rows need an IntegrationEvent per row -- iterate only this (much smaller) subset.
     pushed_delisted = 0
@@ -1024,7 +1059,7 @@ def process_feed_results(run_id: UUID, raw_products: list[RawProduct]) -> Import
         to_create: list[SourceProduct] = []
         to_update: list[SourceProduct] = []
         for raw in raw_products:
-            sp, kind = _build_or_update_sp(
+            sp, kind, _rename_from = _build_or_update_sp(
                 source=source,
                 feed=feed,
                 raw=raw,
@@ -1089,7 +1124,7 @@ def update_or_create_source_product(
         ean_match = SourceProduct.objects.filter(source=source, ean=raw_product.ean).first()
         if ean_match is not None:
             existing_by_ean[ean_match.ean] = ean_match
-    instance, kind = _build_or_update_sp(
+    instance, kind, _rename_from = _build_or_update_sp(
         source=source,
         feed=feed,
         raw=raw_product,
