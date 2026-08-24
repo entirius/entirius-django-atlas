@@ -23,3 +23,12 @@ class BulkRequeueRequest(BaseModel):
     ids: list[int] = Field(
         description="SourceProduct PKs to re-queue (rejected -> queued)", examples=[[1, 2, 3]], min_length=1
     )
+
+
+class LinkToRealProductRequest(BaseModel):
+    real_product_sku: str = Field(
+        description="SKU of the EXISTING PIM RealProduct this source product is the same product as",
+        examples=["AC-abc"],
+        min_length=1,
+        max_length=255,
+    )

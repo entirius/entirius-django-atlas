@@ -54,6 +54,18 @@ class Source(BaseModel):
         default=False, help_text="When True, init push never tries EAN-based RealProduct lookup (per-source opt-out)."
     )
 
+    # Seam for a later version (decision #3): v1 always creates a proposal, so NO code path reads
+    # this yet. NULL = every duplicate_in_pim candidate goes to the review queue; a score set here
+    # is what a future enricher would auto-accept above.
+    auto_accept_min_score = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        help_text=(
+            "Reserved: lookup score above which a duplicate_in_pim proposal would be accepted "
+            "automatically. NULL (default) = always review. Not used by v1."
+        ),
+    )
+
     # primary-only physical writes.
     # Default False: non-primary sources may NOT overwrite RealProduct physical fields
     # (weight/ean/width/height/deep). Opt-in True restores legacy last-write-wins for the

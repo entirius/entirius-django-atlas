@@ -785,6 +785,76 @@ def _persist_sp_after_push(sp: SourceProduct, real_product, channel_idx: str, us
     sp.save(update_fields=["real_product", "pushed_to_channel_idxs", "pushed_by", "pushed_at", "modified_at"])
 
 
+def _emit_pre_linked_event(
+    sp: SourceProduct, source: Source, real_product, event_sink: list[dict[str, Any]] | None
+) -> None:
+    """Push targeted the RealProduct the SP is already attached to (lookup UI / proposal). INFO."""
+    message = f"SP {sp.id} pushed onto its linked RealProduct {real_product.sku} — no new RealProduct created"
+    details = {
+        "matched_sku": real_product.sku,
+        "matched_via": "existing_link",
+        "new_source_idx": source.idx,
+        "existing_source_idxs": _existing_source_idxs_for_sku(real_product.sku, source),
+    }
+    try:
+        event_service.record(
+            event_type=EventType.PUSHED_ONTO_LINKED_REALPRODUCT.value,
+            severity=EventSeverity.INFO.value,
+            source=source,
+            source_product=sp,
+            message=message,
+            details=details,
+        )
+    except Exception:  # noqa: BLE001 — event log must be best-effort
+        logger.warning("event_service.record failed for pre-linked push", exc_info=True)
+    if event_sink is not None:
+        event_sink.append(
+            {
+                "event_type": EventType.PUSHED_ONTO_LINKED_REALPRODUCT.value,
+                "severity": EventSeverity.INFO.value,
+                "message": message,
+                "details": details,
+            }
+        )
+
+
+def _resolve_push_target(
+    sp: SourceProduct,
+    source: Source,
+    profile: SourceMappingProfile,
+    user: AbstractBaseUser | None,
+    event_sink: list[dict[str, Any]] | None,
+):
+    """RealProduct this push writes to. An existing `sp.real_product` wins over every other rule.
+
+    Anything that already attached the SP (lookup UI, enrichment proposal, an earlier push) decided
+    the target; generating a per-source SKU here would spawn the duplicate that link exists to
+    prevent. Only an unlinked SP walks the legacy path: EAN auto-match first, generated SKU after.
+    """
+    from django_pim.models.real_product import RealProduct
+
+    if sp.real_product_id is not None:
+        _emit_pre_linked_event(sp, source, sp.real_product, event_sink)
+        return sp.real_product
+
+    rp_defaults = _real_product_defaults(sp, profile)
+    candidate_rp = realproduct_match_service.find_match_by_ean(sp, source)
+    if candidate_rp is not None:
+        tolerance = realproduct_match_service.physical_tolerance_check(rp_defaults, candidate_rp, source)
+        if tolerance.passed:
+            _emit_auto_link_event(sp, source, candidate_rp, tolerance, event_sink)
+            _log_auto_link_audit(sp, source, candidate_rp, tolerance, user)
+            return candidate_rp
+        _emit_tolerance_violation_event(sp, source, candidate_rp, tolerance, event_sink)
+
+    real_product, rp_created = RealProduct.objects.get_or_create(
+        sku=generate_sku(source, sp.external_id), defaults=rp_defaults
+    )
+    if not rp_created:
+        _detect_multi_source_overlap(sp, source, real_product.sku)
+    return real_product
+
+
 def _emit_pushed_signal(sp: SourceProduct, real_product_sku: str, channel_idx: str) -> None:
     from django_atlas.signals import is_suppressed, source_product_pushed_signal
 
@@ -814,7 +884,6 @@ def init_push_to_channel(
     during this call.
     """
     from django_pim.models.product import Product, ProductVisibilityEnum
-    from django_pim.models.real_product import RealProduct
 
     from django_atlas.services import kind_guard
 
@@ -823,7 +892,6 @@ def init_push_to_channel(
     # before this is reached, but real_product FK writes are severe enough (PIM catalog
     # mutation) to re-assert the gate here rather than rely solely on the caller.
     kind_guard.assert_push_allowed(source, "init push to PIM channel")
-    sku = generate_sku(source, sp.external_id)
     feature_set_idx = resolve_feature_set(sp, sp.feed, profile, source)
 
     channel = _get_channel(channel_idx)
@@ -832,29 +900,7 @@ def init_push_to_channel(
     resolution = resolve_language_for_channel(profile, source, channel)
     language = resolution.language
 
-    rp_defaults = _real_product_defaults(sp, profile)
-
-    # auto EAN-match. Try to attach this SP to an existing
-    # RealProduct sharing its EAN before falling back to the per-source-prefixed SKU.
-    # Fallbacks (no match / tolerance fail / opt-out) preserve the legacy single-source flow.
-    auto_linked = False
-    candidate_rp = realproduct_match_service.find_match_by_ean(sp, source)
-    if candidate_rp is not None:
-        tolerance = realproduct_match_service.physical_tolerance_check(rp_defaults, candidate_rp, source)
-        if tolerance.passed:
-            real_product = candidate_rp
-            rp_created = False
-            auto_linked = True
-            _emit_auto_link_event(sp, source, candidate_rp, tolerance, event_sink)
-            _log_auto_link_audit(sp, source, candidate_rp, tolerance, user)
-        else:
-            _emit_tolerance_violation_event(sp, source, candidate_rp, tolerance, event_sink)
-            real_product, rp_created = RealProduct.objects.get_or_create(sku=sku, defaults=rp_defaults)
-    else:
-        real_product, rp_created = RealProduct.objects.get_or_create(sku=sku, defaults=rp_defaults)
-
-    if not rp_created and not auto_linked:
-        _detect_multi_source_overlap(sp, source, real_product.sku)
+    real_product = _resolve_push_target(sp, source, profile, user, event_sink)
 
     product, p_created = Product.objects.get_or_create(
         real_product=real_product,
@@ -868,7 +914,7 @@ def init_push_to_channel(
     )
     if not p_created:
         raise ValueError(
-            f"Product already exists for SKU {sku} on channel {channel_idx} — "
+            f"Product already exists for SKU {real_product.sku} on channel {channel_idx} — "
             f"use force_repush instead, or check for multi-source collision"
         )
 
@@ -967,15 +1013,19 @@ def force_repush_to_channel(
     source = sp.source
     # Defense-in-depth — see init_push_to_channel.
     kind_guard.assert_push_allowed(source, "force re-push to PIM channel")
-    sku = generate_sku(source, sp.external_id)
     channel = _get_channel(channel_idx)
     resolution = resolve_language_for_channel(profile, source, channel)
     language = resolution.language
 
-    try:
-        real_product = RealProduct.objects.get(sku=sku)
-    except RealProduct.DoesNotExist:
-        return init_push_to_channel(sp, profile, channel_idx, user, event_sink=event_sink)
+    # Mirrors init_push_to_channel: a linked SP re-pushes onto ITS RealProduct, never onto the
+    # per-source generated SKU (which would be a second row for the same product).
+    if sp.real_product_id is not None:
+        real_product = sp.real_product
+    else:
+        try:
+            real_product = RealProduct.objects.get(sku=generate_sku(source, sp.external_id))
+        except RealProduct.DoesNotExist:
+            return init_push_to_channel(sp, profile, channel_idx, user, event_sink=event_sink)
     try:
         product = Product.objects.get(real_product=real_product, shop=channel)
     except Product.DoesNotExist:

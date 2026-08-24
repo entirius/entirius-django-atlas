@@ -157,6 +157,11 @@ urlpatterns = [
         name="admin-products-force-repush",
     ),
     path(
+        "products/<int:pk>/link-to-realproduct/",
+        SourceProductViewSet.as_view({"post": "link_to_realproduct"}),
+        name="admin-products-link-to-realproduct",
+    ),
+    path(
         "products/<int:pk>/unlink-from-realproduct/",
         SourceProductViewSet.as_view({"post": "unlink_from_realproduct"}),
         name="admin-products-unlink-from-realproduct",

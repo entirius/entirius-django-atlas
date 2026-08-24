@@ -121,3 +121,15 @@ class UnlinkFromRealProductResponse(BaseModel):
         description="Warning events fired during this call. Same shape as PushResponse.events.",
         examples=[[]],
     )
+
+
+class LinkToRealProductResponse(BaseModel):
+    """Response for the operator link of an unlinked SP to an existing RealProduct."""
+
+    real_product_sku: str = Field(description="SKU the SP is now linked to", examples=["AC-abc"])
+    link_pk: int = Field(description="PK of the SourceProductLink covering (sku, source)", examples=[7])
+    events: list[dict] = Field(
+        default_factory=list,
+        description="Events fired during this call. Same shape as PushResponse.events.",
+        examples=[[]],
+    )

@@ -1,0 +1,21 @@
+[
+  {
+    "model": "django_enrichment.spawnrule",
+    "pk": 900,
+    "fields": {
+      "key": "atlas-duplicate-in-pim",
+      "module": "atlas",
+      "check_key": "duplicate_in_pim",
+      "params": {},
+      "scope": {},
+      "task_type": "lookup_link",
+      "task_params": {},
+      "limit": 200,
+      "cooldown_days": 1,
+      "auto": false,
+      "active": true,
+      "created_at": "2026-08-23T00:00:00Z",
+      "modified_at": "2026-08-23T00:00:00Z"
+    }
+  }
+]
