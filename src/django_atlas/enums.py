@@ -74,6 +74,9 @@ class EventType(models.TextChoices):
     MAPPING_TRANSFORM_FAILED = "mapping_transform_failed", "Mapping transform failed"
     # auto EAN-match in pim_writer.init_push_to_channel
     AUTO_LINKED_TO_EXISTING_REALPRODUCT = "auto_linked_to_existing_realproduct", "Auto-linked to existing RealProduct"
+    # push targeted an SP that was ALREADY linked (lookup UI / proposal / earlier push) — distinct
+    # from the EAN auto-match above so dashboards/scenarios counting one never inflate the other.
+    PUSHED_ONTO_LINKED_REALPRODUCT = "pushed_onto_linked_realproduct", "Pushed onto linked RealProduct"
     PHYSICAL_TOLERANCE_VIOLATION = "physical_tolerance_violation", "Physical tolerance violation"
     MANUAL_UNLINK_FROM_REALPRODUCT = "manual_unlink_from_realproduct", "Manual unlink from RealProduct"
     # operator accepted a duplicate_in_pim proposal (services/enrichment_adapter.py)

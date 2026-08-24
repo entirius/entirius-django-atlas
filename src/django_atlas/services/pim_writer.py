@@ -798,7 +798,7 @@ def _emit_pre_linked_event(
     }
     try:
         event_service.record(
-            event_type=EventType.AUTO_LINKED_TO_EXISTING_REALPRODUCT.value,
+            event_type=EventType.PUSHED_ONTO_LINKED_REALPRODUCT.value,
             severity=EventSeverity.INFO.value,
             source=source,
             source_product=sp,
@@ -810,7 +810,7 @@ def _emit_pre_linked_event(
     if event_sink is not None:
         event_sink.append(
             {
-                "event_type": EventType.AUTO_LINKED_TO_EXISTING_REALPRODUCT.value,
+                "event_type": EventType.PUSHED_ONTO_LINKED_REALPRODUCT.value,
                 "severity": EventSeverity.INFO.value,
                 "message": message,
                 "details": details,

@@ -73,7 +73,7 @@ def linked_real_product():
 
 def _pre_link_events():
     return IntegrationEvent.objects.filter(
-        event_type=EventType.AUTO_LINKED_TO_EXISTING_REALPRODUCT.value, details__matched_via="existing_link"
+        event_type=EventType.PUSHED_ONTO_LINKED_REALPRODUCT.value, details__matched_via="existing_link"
     )
 
 
@@ -90,6 +90,20 @@ def test_linked_sp_pushes_onto_its_realproduct(admin_user, scaffolding, linked_r
     sp.refresh_from_db()
     assert sp.real_product_id == linked_real_product.id
     assert sp.pushed_to_channel_idxs == [channel.idx]
+
+
+def test_linked_sp_push_does_not_inflate_the_auto_ean_link_event(admin_user, scaffolding, linked_real_product):
+    """`auto_linked_to_existing_realproduct` is reserved for the EAN auto-match — a pre-linked
+    push must get its own event type or dashboards counting the EAN case would over-count."""
+    channel, profile, source = scaffolding
+    sp = SourceProductFactory(
+        source=source, external_id="6620", ean=_EAN, data={"weight": "0.150"}, real_product=linked_real_product
+    )
+
+    pim_writer.init_push_to_channel(sp, profile, channel.idx, admin_user)
+
+    assert not IntegrationEvent.objects.filter(event_type=EventType.AUTO_LINKED_TO_EXISTING_REALPRODUCT.value).exists()
+    assert _pre_link_events().count() == 1
 
 
 def test_linked_sp_records_why_it_skipped_sku_generation(admin_user, scaffolding, linked_real_product):

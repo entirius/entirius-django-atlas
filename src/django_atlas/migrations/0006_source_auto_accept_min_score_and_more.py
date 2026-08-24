@@ -71,6 +71,7 @@ class Migration(migrations.Migration):
                     ("physical_tolerance_violation", "Physical tolerance violation"),
                     ("manual_unlink_from_realproduct", "Manual unlink from RealProduct"),
                     ("linked_via_lookup_proposal", "Linked via lookup proposal"),
+                    ("linked_via_lookup_ui", "Linked via lookup UI"),
                     ("primary_source_switched", "Primary source switched"),
                     ("primary_source_emergency_switch", "Primary source emergency switch"),
                     ("primary_source_forced", "Primary source forced (manual override)"),
