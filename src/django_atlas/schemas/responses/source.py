@@ -45,9 +45,7 @@ class SourceResponse(BaseModel):
     )
     # auto-primary selection knobs (CMS Overview tab).
     primary_strategy: str = Field(description="Auto-primary picker strategy", examples=["lowest_cost_with_stock"])
-    primary_switch_cooldown_hours: int = Field(
-        description="Minimum hours between auto-primary switches", examples=[24]
-    )
+    primary_switch_cooldown_hours: int = Field(description="Minimum hours between auto-primary switches", examples=[24])
     primary_switch_hysteresis_pct: int = Field(
         description="Cost advantage percent required before switching primary", examples=[2]
     )
