@@ -6,6 +6,8 @@
 
 from __future__ import annotations
 
+import sys
+import types
 from decimal import Decimal
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -17,7 +19,7 @@ from django_atlas.connectors.base import SyncConnector
 from django_atlas.enums import EventType, LogStatus, ProductStatus
 from django_atlas.models import ImportLog, IntegrationEvent, SourceProduct, SourceSettings
 from django_atlas.schemas.contract import PriceStockUpdate, RawProduct
-from django_atlas.services import import_service, log_service
+from django_atlas.services import import_service, log_service, lookup_provider
 from django_atlas.signals import source_products_imported_signal
 from tests.factories import FeedFactory, SourceFactory, SourceProductFactory
 
@@ -300,6 +302,96 @@ def test_full_sync_last_synced_at_updates_each_run():
         import_service.execute_feed(feed)
     sp.refresh_from_db()
     assert sp.last_synced_at >= first_synced
+
+
+# ============== LOOKUP FRESHNESS ==============
+# Full sync persists via bulk_create/bulk_update, which fire no post_save — lookup_provider's
+# signal_specs never sees these rows. import_service._enqueue_lookup_refresh is the freshness
+# path for that gap; these tests cover it directly (checkpoint BG-10 #12).
+
+
+def _install_fake_lookup_tasks(monkeypatch) -> MagicMock:
+    """Inject a fake `django_lookup.tasks.refresh_fingerprint` — a MagicMock we assert calls on."""
+    fake_task = MagicMock()
+    fake_pkg = types.ModuleType("django_lookup")
+    fake_tasks = types.ModuleType("django_lookup.tasks")
+    fake_tasks.refresh_fingerprint = fake_task
+    monkeypatch.setitem(sys.modules, "django_lookup", fake_pkg)
+    monkeypatch.setitem(sys.modules, "django_lookup.tasks", fake_tasks)
+    return fake_task
+
+
+@pytest.mark.django_db
+def test_full_sync_enqueues_lookup_refresh_for_new_rows(monkeypatch):
+    fake_task = _install_fake_lookup_tasks(monkeypatch)
+    feed = FeedFactory(feed_config=_FEED_CONFIG)
+
+    with _patched_get(SAMPLE_FULL):
+        import_service.execute_feed(feed)
+
+    calls = fake_task.delay.call_args_list
+    assert {call.args[0] for call in calls} == {lookup_provider.KIND}
+    assert {call.args[1] for call in calls} == {f"{feed.source.idx}:SKU-00{i}" for i in range(1, 6)}
+
+
+@pytest.mark.django_db
+def test_full_sync_lookup_refresh_skips_unchanged_rows(monkeypatch):
+    feed = FeedFactory(feed_config=_FEED_CONFIG)
+    with _patched_get(SAMPLE_FULL):
+        import_service.execute_feed(feed)  # first sync, no fake installed — must not raise
+
+    fake_task = _install_fake_lookup_tasks(monkeypatch)
+    with _patched_get(SAMPLE_FULL):  # identical feed -> every row "unchanged"
+        import_service.execute_feed(feed)
+
+    fake_task.delay.assert_not_called()
+
+
+@pytest.mark.django_db
+def test_full_sync_lookup_refresh_only_the_changed_row(monkeypatch):
+    feed = FeedFactory(feed_config=_FEED_CONFIG)
+    with _patched_get(SAMPLE_FULL):
+        import_service.execute_feed(feed)
+
+    fake_task = _install_fake_lookup_tasks(monkeypatch)
+    modified = SAMPLE_FULL.replace(
+        b"<description>Adjustable office chair with lumbar support</description>",
+        b"<description>NEW DESC</description>",
+    )
+    with _patched_get(modified):
+        import_service.execute_feed(feed)
+
+    refs = {call.args[1] for call in fake_task.delay.call_args_list}
+    assert refs == {f"{feed.source.idx}:SKU-001"}
+
+
+@pytest.mark.django_db
+def test_full_sync_survives_django_lookup_being_genuinely_absent(monkeypatch):
+    """`sys.modules["django_lookup"] = None` is how Python itself represents "genuinely not
+    installed" (ModuleNotFoundError) — distinct from this dev checkout's own RuntimeError
+    ("on PYTHONPATH but not in INSTALLED_APPS"), which every other test in this file already
+    exercises implicitly. Import must not break the pipeline either way."""
+    monkeypatch.setitem(sys.modules, "django_lookup", None)
+    feed = FeedFactory(feed_config=_FEED_CONFIG)
+
+    with _patched_get(SAMPLE_FULL):
+        log = import_service.execute_feed(feed)
+
+    assert log.status == LogStatus.SUCCESS.value
+    assert SourceProduct.objects.filter(source=feed.source).count() == 5
+
+
+@pytest.mark.django_db
+def test_full_sync_lookup_refresh_broker_failure_does_not_break_import(monkeypatch):
+    fake_task = _install_fake_lookup_tasks(monkeypatch)
+    fake_task.delay.side_effect = ConnectionError("broker unreachable")
+    feed = FeedFactory(feed_config=_FEED_CONFIG)
+
+    with _patched_get(SAMPLE_FULL):
+        log = import_service.execute_feed(feed)
+
+    assert log.status == LogStatus.SUCCESS.value
+    assert SourceProduct.objects.filter(source=feed.source).count() == 5
 
 
 # ============== DELTA SYNC ==============

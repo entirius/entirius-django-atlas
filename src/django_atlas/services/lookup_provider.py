@@ -14,6 +14,12 @@ Items are the *candidate pool*: source products still waiting for a RealProduct 
 NULL` and not rejected. Linking one drops it from the pool, which is how its fingerprint row gets
 deleted (the lookup refresh task deletes a row whose item the provider no longer serves).
 
+Freshness has two paths, not one: `signal_specs` below wires `post_save` for the row-at-a-time
+writers (link/unlink, manual edits), but `import_service` writes imported rows with
+`bulk_create`/`bulk_update`, which fire no signals — Django never runs `post_save` for a bulk
+write. `import_service._enqueue_lookup_refresh` closes that gap explicitly, enqueueing the same
+`refresh_fingerprint` task per changed ref right after each full-sync batch commits.
+
 `ref` = `<source.idx>:<external_id>` (stable across re-imports, unlike the pk). `detail_url` still
 needs the pk — the admin API exposes source products cross-source, by pk only.
 """
@@ -26,6 +32,7 @@ from django_atlas.enums import ProductStatus
 from django_atlas.models import AttributeMappingTargetType, SourceAttributeMapping, SourceProduct
 from django_atlas.services.value_transformer import transform
 
+KIND = "atlas_source_product"
 REF_SEPARATOR = ":"
 DETAIL_URL = "/api/atlas/v2/admin/products/{pk}/"
 # data keys read when no SourceAttributeMapping points at the target: first hit wins.
@@ -106,8 +113,13 @@ def signal_specs() -> list[dict]:
     """Senders django-lookup connects so a fingerprint follows the catalog (see its signals.py).
 
     Only a changed `data_hash` (new data), a re-pointed `real_product` (linked/unlinked) or a status
-    change matter; the task then rebuilds the row or deletes it. Imports save thousands of rows —
-    `watch` keeps them from becoming a task each.
+    change matter; the task then rebuilds the row or deletes it. `watch` keeps a row-at-a-time save
+    (link/unlink, manual edit, force re-push) that touches neither from becoming a task.
+
+    This covers the row-at-a-time writers only — `SourceProduct.save()` fires `post_save`. Full sync
+    persists via `bulk_create`/`bulk_update` instead (thousands of rows per feed run), which Django
+    never routes through `post_save`; `import_service._enqueue_lookup_refresh` is the freshness path
+    for that one.
     """
     return [
         {

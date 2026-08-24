@@ -31,7 +31,14 @@ from django_atlas.enums import (
 )
 from django_atlas.models import ImportLog, Source, SourceFeed, SourceProduct, SourceProductLink, SourceSettings
 from django_atlas.schemas.contract import PriceStockUpdate, RawProduct
-from django_atlas.services import audit_service, connector_registry, event_service, log_service, observation_service
+from django_atlas.services import (
+    audit_service,
+    connector_registry,
+    event_service,
+    log_service,
+    lookup_provider,
+    observation_service,
+)
 from django_atlas.signals import source_products_imported_signal
 
 logger = logging.getLogger(__name__)
@@ -109,6 +116,40 @@ def _flush_audit_drafts(drafts: list[dict[str, Any]], *, context: str) -> None:
         audit_service.log_changes_bulk(drafts)
     except Exception:  # noqa: BLE001 — audit must be best-effort
         logger.warning("audit_service.log_changes_bulk failed in %s", context, exc_info=True)
+
+
+def _lookup_ref(source: Source, sp: SourceProduct) -> str:
+    """Ref format `lookup_provider` serves, built from `source` (already in scope for a whole
+    batch) rather than `sp.source` — the latter is uncached for existing rows and would cost a
+    query per SourceProduct."""
+    return f"{source.idx}{lookup_provider.REF_SEPARATOR}{sp.external_id}"
+
+
+def _enqueue_lookup_refresh(refs: list[str]) -> None:
+    """Best-effort fingerprint refresh for source products a bulk write skipped signals for.
+
+    `bulk_create`/`bulk_update` fire no `post_save`, so django-lookup's freshness wiring
+    (`lookup_provider.signal_specs`) never sees these rows — full sync would otherwise leave
+    imported rows invisible to the lookup candidate pool until an operator runs
+    `lookup_backfill`/`lookup_reconcile`. Soft dependency, same posture as
+    `django_lookup.signals._enqueue`: import guarded so atlas keeps working without django-lookup
+    installed, and broker failures are swallowed — a catalog write must never fail because the
+    lookup queue is unreachable, and a dropped enqueue is recoverable with `lookup_reconcile`.
+    """
+    if not refs:
+        return
+    try:
+        from django_lookup.tasks import refresh_fingerprint
+    except (ImportError, RuntimeError):
+        # RuntimeError alongside ImportError matches qms_writer._qms_available's own
+        # precedent: Django raises RuntimeError (not ImportError) when a module is on
+        # PYTHONPATH but not in INSTALLED_APPS — the common multi-repo dev-checkout shape.
+        return
+    for ref in refs:
+        try:
+            refresh_fingerprint.delay(lookup_provider.KIND, ref)
+        except Exception:  # noqa: BLE001 — broker errors must not break the import pipeline
+            logger.warning("lookup: could not enqueue refresh for %s — run lookup_reconcile", ref, exc_info=True)
 
 
 def _hash_attributes(attributes: dict[str, Any]) -> str:
@@ -364,6 +405,7 @@ def _process_full_sync_batch(
     to_update: list[SourceProduct] = []
     audit_drafts: list[dict[str, Any]] = []
     pending_observations: list[tuple[SourceProduct, dict[str, Any]]] = []
+    lookup_refs: list[str] = []
 
     for raw in batch:
         prev_sp = existing_by_external.get(raw.external_id)
@@ -388,9 +430,11 @@ def _process_full_sync_batch(
         if kind == "new":
             to_create.append(sp)
             counts["new_count"] += 1
+            lookup_refs.append(_lookup_ref(source, sp))
         elif kind == "updated":
             to_update.append(sp)
             counts["updated_count"] += 1
+            lookup_refs.append(_lookup_ref(source, sp))
         else:
             # unchanged still updates last_synced_at
             to_update.append(sp)
@@ -412,6 +456,12 @@ def _process_full_sync_batch(
         _record_observation_for_sp(source, sp, raw=raw_attrs)
 
     counts["error_summary"] = error_summary
+    # NOT enqueued here — this whole function runs inside `_run_batch_with_retry`'s
+    # `transaction.atomic()`. A Celery publish is not rolled back with a failed attempt and
+    # would double-fire on a retry, so the refs travel out with `counts` and the caller
+    # enqueues them only once `_run_batch_with_retry` has returned (see `_process_delta_sync_batch`
+    # / `_emit_delta_side_effects` for the same rule already enforced on the delta-sync path).
+    counts["lookup_refs"] = lookup_refs
     return counts
 
 
@@ -446,6 +496,9 @@ def process_full_sync(feed: SourceFeed, connector: BaseConnector, log: ImportLog
         for key in ("total_count", "new_count", "updated_count", "unchanged_count", "error_count"):
             counts[key] += batch_counts[key]
         error_summary.extend(batch_counts["error_summary"])
+        # Only after the batch's transaction committed — exactly once per successful batch
+        # (same rule `_emit_delta_side_effects` enforces on the delta-sync path).
+        _enqueue_lookup_refresh(batch_counts["lookup_refs"])
         if rate_limit_delay:
             time.sleep(rate_limit_delay)
 

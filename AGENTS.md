@@ -142,8 +142,17 @@ Items are the **candidate pool**: `real_product IS NULL` and status not `rejecte
 addressing source products by pk only. brand / mpn / physicals come from `data` through the source's
 active `SourceAttributeMapping` rows (modifier applied) and fall back to conventional keys
 (`brand` / `manufacturer`, `mpn`, `weight`, …). Images stay remote URLs — never fetched here. The
-single signal spec re-runs the provider on every `SourceProduct` save; linking one drops it from the
-pool, which is how lookup deletes its fingerprint row.
+single signal spec re-runs the provider on every row-at-a-time `SourceProduct.save()` (link/unlink,
+manual edit); linking one drops it from the pool, which is how lookup deletes its fingerprint row.
+
+Freshness has a second path: `import_service` persists full-sync batches with
+`bulk_create`/`bulk_update`, which fire no `post_save` — the signal above never sees them.
+`import_service._enqueue_lookup_refresh` closes that gap, enqueueing `refresh_fingerprint` per
+changed ref right after each batch's transaction commits (never inside it — see
+`_run_batch_with_retry`'s no-side-effects-in-a-retryable-attempt rule). Soft dependency, same
+posture as `django_lookup.signals._enqueue`: import guarded (`ImportError`/`RuntimeError` — the
+latter is Django's own "on PYTHONPATH but not in INSTALLED_APPS" signature, `qms_writer` hits the
+same one), broker failures swallowed and logged, recoverable with `lookup_reconcile`.
 
 ### Enrichment adapter (duplicate_in_pim)
 
