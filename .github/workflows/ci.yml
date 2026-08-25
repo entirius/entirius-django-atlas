@@ -12,7 +12,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v4
-      - run: uv sync --frozen --all-extras
+      # Explicit extras, not --all-extras: the `lookup` extra is declared for metadata
+      # honesty, but django-lookup must stay ABSENT here — this suite covers atlas's
+      # lookup-less configuration (test_import_service, test_link_to_realproduct).
+      - run: uv sync --frozen --extra dev --extra test --extra qms
       - run: uv run ruff check .
       - run: uv run ruff format --check .
       - run: uv run pre-commit run insert-license --all-files
@@ -33,7 +36,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v4
-      - run: uv sync --frozen --all-extras
+      # Explicit extras, not --all-extras: the `lookup` extra is declared for metadata
+      # honesty, but django-lookup must stay ABSENT here — this suite covers atlas's
+      # lookup-less configuration (test_import_service, test_link_to_realproduct).
+      - run: uv sync --frozen --extra dev --extra test --extra qms
       - run: uv run pytest -x -q
 
   secret-scan:

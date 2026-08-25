@@ -30,9 +30,19 @@ dependencies = [
 dev  = ["ruff", "pre-commit"]
 test = ["pytest", "pytest-django", "factory-boy", "dj-database-url", "psycopg[binary]"]
 qms  = ["entirius-django-qms>=4.0.0"]
+# Soft dependency: every django_lookup import in this package is function-local, so atlas
+# runs fine without it (covered by test_import_service / test_link_to_realproduct).
+# Marker, not a requires-python bump: lookup needs >=3.12, atlas still supports 3.11.
+lookup = ["entirius-django-lookup>=0.1.0; python_version >= '3.12'"]
 
 [project.urls]
 Repository = "https://github.com/entirius/entirius-django-atlas"
+
+# TEMPORARY: entirius-django-lookup is a private repo and is not on PyPI yet, so the
+# optional `lookup` extra can only resolve from git. Delete this block and re-lock at the
+# first entirius-django-lookup PyPI release.
+[tool.uv.sources]
+entirius-django-lookup = { git = "https://github.com/entirius/entirius-django-lookup", branch = "develop" }
 
 [project.entry-points."atlas_connectors"]
 xml_feed = "django_atlas.connectors.xml_feed:XmlFeedConnector"
