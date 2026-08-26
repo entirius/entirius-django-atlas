@@ -106,7 +106,7 @@ class MappingWarning(BaseModel):
     details: dict[str, Any] = Field(
         default_factory=dict,
         description="Free-form context: sample_count, failed_pct, suggestion, expected_type, etc.",
-        examples=[{"sample_count": 0, "suggestion": "Pozostałe"}],
+        examples=[{"sample_count": 0, "suggestion": "Other"}],
     )
 
 

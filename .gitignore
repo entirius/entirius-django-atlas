@@ -29,5 +29,8 @@ coverage.xml
 .vscode/
 .DS_Store
 
+# Test-run MEDIA_ROOT spill (content-addressed image cache)
+image/
+
 # Secret scanning (forbidden-names blocklist - local symlink, never committed)
 .gitleaks.toml

@@ -168,4 +168,4 @@ creation — the auto-primary strategy is what flips it.
 ## Related docs
 
 - `docs/audit-log.md` — full ChangeLogSource enum + write paths.
-- `entirius-docs/.../volkanos/modules/sources/push-workflow.md` — `multi_source_overlap` event spec (now actually fires).
+- `docs/audit-log.md` § events — `multi_source_overlap` event spec (now actually fires).

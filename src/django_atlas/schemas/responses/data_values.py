@@ -12,7 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field
 class DataValue(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
-    value: str = Field(description="Distinct value as it appears in SourceProduct.data", examples=["Pozostałe"])
+    value: str = Field(description="Distinct value as it appears in SourceProduct.data", examples=["Other"])
     count: int = Field(description="Number of SourceProducts with this value", examples=[87])
 
 

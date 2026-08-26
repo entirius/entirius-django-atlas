@@ -829,8 +829,8 @@ def test_re_execute_full_sync_unchanged():
 
 @pytest.mark.django_db
 def test_concurrency_unique_constraint_protects():
-    """Statement-level: gdy próbujemy bulk_create z duplikatami → IntegrityError catched naturalnie.
-    Tu po prostu sprawdzamy, że unique constraint działa."""
+    """Statement-level: a bulk_create with duplicates raises IntegrityError on its own.
+    This just asserts the unique constraint is in force."""
     source = SourceFactory()
     feed = FeedFactory(source=source, feed_config=_FEED_CONFIG)
     SourceProductFactory(source=source, feed=feed, external_id="DUP-1")

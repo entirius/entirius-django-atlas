@@ -223,7 +223,7 @@ class SourceViewSet(viewsets.ViewSet):
         description=(
             "Returns distinct values + counts for the given source_field across the source's "
             "SourceProducts. Powers the source_value picker in CategoryMapping rows so the "
-            "operator sees real source vocabulary (e.g. 'Pozostałe (87)') instead of typing "
+            "operator sees real source vocabulary (e.g. 'Other (87)') instead of typing "
             "from memory. Dot-paths supported for nested JSON (e.g. info.options.value). "
             "Cached 5 min per (source, source_field) and invalidated together with data-keys "
             "on `execute_feed_task` success."
