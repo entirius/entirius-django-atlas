@@ -38,12 +38,6 @@ lookup = ["entirius-django-lookup>=0.1.0; python_version >= '3.12'"]
 [project.urls]
 Repository = "https://github.com/entirius/entirius-django-atlas"
 
-# TEMPORARY: entirius-django-lookup is a private repo and is not on PyPI yet, so the
-# optional `lookup` extra can only resolve from git. Delete this block and re-lock at the
-# first entirius-django-lookup PyPI release.
-[tool.uv.sources]
-entirius-django-lookup = { git = "https://github.com/entirius/entirius-django-lookup", branch = "develop" }
-
 [project.entry-points."atlas_connectors"]
 xml_feed = "django_atlas.connectors.xml_feed:XmlFeedConnector"
 scraper = "django_atlas.connectors.scraper:ScraperConnector"

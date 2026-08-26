@@ -522,7 +522,7 @@ requires-dist = [
     { name = "djangorestframework", specifier = ">=3.14" },
     { name = "djangorestframework-simplejwt", specifier = ">=5.3" },
     { name = "drf-spectacular", specifier = ">=0.27" },
-    { name = "entirius-django-lookup", marker = "python_full_version >= '3.12' and extra == 'lookup'", git = "https://github.com/entirius/entirius-django-lookup?branch=develop" },
+    { name = "entirius-django-lookup", marker = "python_full_version >= '3.12' and extra == 'lookup'", specifier = ">=0.1.0" },
     { name = "entirius-django-pim", specifier = ">=3.0.0" },
     { name = "entirius-django-qms", marker = "extra == 'qms'", specifier = ">=4.0.0" },
     { name = "entirius-django-regional", specifier = ">=2.0.1" },
@@ -542,7 +542,7 @@ provides-extras = ["dev", "test", "qms", "lookup"]
 [[package]]
 name = "entirius-django-lookup"
 version = "0.1.0"
-source = { git = "https://github.com/entirius/entirius-django-lookup?branch=develop#22b3cdd1553c6664b34e764ac9b79bd6b88e8f10" }
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "celery", marker = "python_full_version >= '3.12'" },
     { name = "django", version = "6.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
@@ -557,6 +557,10 @@ dependencies = [
     { name = "python-stdnum", marker = "python_full_version >= '3.12'" },
     { name = "rapidfuzz", marker = "python_full_version >= '3.12'" },
     { name = "requests", marker = "python_full_version >= '3.12'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/ba/59/fa84832041ebbdf6f22a3fc2dde692683a7a87d2a7a393e763ada6b52d87/entirius_django_lookup-0.1.0.tar.gz", hash = "sha256:b4b36f9d876690a089e6a401aa1e99bb810c2c5b56f0bd75f56598b8d97a09bc", size = 204458, upload-time = "2026-08-26T13:22:31.232Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/e2/64/d15d1272ecf585a32a3e02c75c149f1c7c8a1f6e281ec081113548984568/entirius_django_lookup-0.1.0-py3-none-any.whl", hash = "sha256:f21f77c0292a1fdac109c3f30ef873c1193c4048a11a167c023ade231e119f7a", size = 90489, upload-time = "2026-08-26T13:22:30.051Z" },
 ]
 
 [[package]]
