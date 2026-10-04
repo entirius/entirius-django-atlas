@@ -40,6 +40,7 @@ _TAGS_EVENT = ["Source Events"]
 class ImportLogViewSet(viewsets.ViewSet):
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAdminUser]
+    access_area = "atlas.sources"
     pagination_class = AdminPageNumberPagination
     serializer_class = None
 
@@ -110,6 +111,7 @@ class ImportLogViewSet(viewsets.ViewSet):
 class IntegrationEventViewSet(viewsets.ViewSet):
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAdminUser]
+    access_area = "atlas.sources"
     pagination_class = AdminPageNumberPagination
     serializer_class = None
 

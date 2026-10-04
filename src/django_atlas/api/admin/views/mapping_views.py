@@ -57,6 +57,7 @@ _TAGS = ["Source Mappings"]
 class SourceMappingProfileViewSet(viewsets.ViewSet):
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAdminUser]
+    access_area = "atlas.sources"
     pagination_class = AdminPageNumberPagination
     serializer_class = None
 
@@ -152,6 +153,7 @@ class SourceMappingProfileViewSet(viewsets.ViewSet):
 class SourceAttributeMappingViewSet(viewsets.ViewSet):
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAdminUser]
+    access_area = "atlas.sources"
     pagination_class = AdminPageNumberPagination
     serializer_class = None
 
@@ -248,6 +250,7 @@ class SourceAttributeMappingViewSet(viewsets.ViewSet):
 class SourceCategoryMappingViewSet(viewsets.ViewSet):
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAdminUser]
+    access_area = "atlas.sources"
     pagination_class = AdminPageNumberPagination
     serializer_class = None
 
