@@ -27,6 +27,7 @@ _TAGS = ["Source Push"]
 class BulkPushView(APIView):
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAdminUser]
+    access_area = "atlas.products"
 
     @extend_schema(
         tags=_TAGS,

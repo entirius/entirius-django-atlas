@@ -38,6 +38,7 @@ def _bool_param(request: Request, name: str, default: bool) -> bool:
 class ObservationViewSet(viewsets.ViewSet):
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAdminUser]
+    access_area = "atlas.products"
     pagination_class = AdminPageNumberPagination
     serializer_class = None
 

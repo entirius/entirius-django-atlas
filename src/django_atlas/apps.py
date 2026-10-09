@@ -33,6 +33,15 @@ class DjangoAtlasConfig(AppConfig):
     name = "django_atlas"
     verbose_name = "Sources"
     is_volkanos = True
+    # Copied 1:1 from entirius-django-access cf538d2 catalogue defaults;
+    # the access defaults stay until this module's release.
+    access_areas = [
+        {"key": "atlas.sources", "label": "Sources, suppliers, competitors, feeds and mappings"},
+        {"key": "atlas.products", "label": "Source products, links and observations"},
+        {"key": "atlas.credentials", "label": "Source credentials", "sensitive": ("secret",)},
+    ]
+    # Every admin view carries its access_area; no route needs a path rule.
+    access_route_rules = []
 
     def ready(self) -> None:
         from django_atlas.models import SourceSettings
