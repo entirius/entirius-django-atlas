@@ -1,6 +1,6 @@
 [project]
 name = "entirius-django-atlas"
-version = "2.0.0"
+version = "2.1.0"
 description = "External product data engine for Entirius: procurement, price monitoring and enrichment sources in one pipeline"
 keywords = ["django", "product-data", "price-monitoring", "procurement", "ecommerce", "entirius"]
 classifiers = [
