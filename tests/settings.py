@@ -3,6 +3,7 @@
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 import tempfile
+from importlib.util import find_spec
 
 import dj_database_url
 
@@ -29,6 +30,9 @@ INSTALLED_APPS = [
     "django_regional",
     "django_atlas",
 ]
+# django_access when importable (zeno): tests/test_access_ownership.py proves the access declarations.
+if find_spec("django_access"):
+    INSTALLED_APPS.append("django_access")
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",

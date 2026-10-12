@@ -41,6 +41,7 @@ def _serialize(s) -> dict:
 class SupplierViewSet(viewsets.ViewSet):
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAdminUser]
+    access_area = "atlas.sources"
     pagination_class = AdminPageNumberPagination
     serializer_class = None
     lookup_field = "idx"

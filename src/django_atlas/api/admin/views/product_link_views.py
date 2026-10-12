@@ -34,6 +34,7 @@ _TAGS = ["Product Source Links"]
 class SourceProductLinkViewSet(viewsets.ViewSet):
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAdminUser]
+    access_area = "atlas.products"
     pagination_class = AdminPageNumberPagination
     serializer_class = None
 

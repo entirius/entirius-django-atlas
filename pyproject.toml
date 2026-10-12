@@ -1,7 +1,21 @@
 [project]
 name = "entirius-django-atlas"
-version = "2.0.0"
-description = "Generic external-product-data ingestion engine (procurement/monitoring/enrichment) for Volkanos"
+version = "2.1.0"
+description = "External product data engine for Entirius: procurement, price monitoring and enrichment sources in one pipeline"
+keywords = ["django", "product-data", "price-monitoring", "procurement", "ecommerce", "entirius"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Framework :: Django",
+    "Framework :: Django :: 5.2",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Mozilla Public License 2.0 (MPL 2.0)",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Internet :: WWW/HTTP",
+]
 authors = [{ name = "Entirius" }]
 maintainers = [
     { name = "Piotr Brzozowski", email = "piotrb@entirius.com" },
@@ -36,7 +50,11 @@ qms  = ["entirius-django-qms>=4.0.0"]
 lookup = ["entirius-django-lookup>=0.1.0; python_version >= '3.12'"]
 
 [project.urls]
+Homepage = "https://docs.entirius.com/"
+Documentation = "https://github.com/entirius/entirius-django-atlas/tree/develop/docs"
 Repository = "https://github.com/entirius/entirius-django-atlas"
+Changelog = "https://github.com/entirius/entirius-django-atlas/blob/develop/CHANGELOG.md"
+Issues = "https://github.com/entirius/entirius-django-atlas/issues"
 
 [project.entry-points."atlas_connectors"]
 xml_feed = "django_atlas.connectors.xml_feed:XmlFeedConnector"

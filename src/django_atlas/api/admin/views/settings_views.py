@@ -33,6 +33,7 @@ _TAGS = ["Source Settings"]
 class SourceSettingsView(APIView):
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAdminUser]
+    access_area = "atlas.sources"
 
     @extend_schema(tags=_TAGS, summary="Retrieve source settings (singleton)", responses={200: SourceSettingsResponse})
     def get(self, request: Request) -> Response:

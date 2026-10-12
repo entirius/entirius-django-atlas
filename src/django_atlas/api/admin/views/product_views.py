@@ -50,6 +50,7 @@ _TAGS = ["Source Products"]
 class SourceProductViewSet(viewsets.ViewSet):
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAdminUser]
+    access_area = "atlas.products"
     pagination_class = AdminPageNumberPagination
     serializer_class = None
 

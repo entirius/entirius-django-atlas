@@ -44,6 +44,7 @@ _MAX_BULK_SKUS = 100
 class PimSkuChangeLogViewSet(viewsets.ViewSet):
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAdminUser]
+    access_area = "atlas.products"
     serializer_class = None
 
     def get_throttles(self):

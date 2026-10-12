@@ -47,6 +47,7 @@ _TAGS = ["Sources"]
 class SourceViewSet(viewsets.ViewSet):
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAdminUser]
+    access_area = "atlas.sources"
     pagination_class = AdminPageNumberPagination
     serializer_class = None
     lookup_field = "idx"
@@ -289,6 +290,7 @@ class SourceCredentialsView(viewsets.ViewSet):
 
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsSuperUser]
+    access_area = "atlas.credentials"
     serializer_class = None
 
     @extend_schema(
