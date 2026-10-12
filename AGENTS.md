@@ -1,7 +1,7 @@
 # AGENTS.md
 
-Generic external-product-data ingestion engine (procurement/monitoring/enrichment) for Volkanos —
-distribution `entirius-django-atlas`, Django app `django_atlas`.
+`entirius-django-atlas` (Django app `django_atlas`) — external product data engine of Entirius: one pipeline for
+procurement, monitoring and enrichment sources, discriminated by `Source.kind`.
 
 ## Commands
 
@@ -24,7 +24,7 @@ distribution `entirius-django-atlas`, Django app `django_atlas`.
   `access_area`; a new admin route without one fails `tests/test_access_ownership.py`.
 - Default: do not commit — git is the user's call.
 
-## Commit Message Format
+### Commit Message Format
 
 **NEVER add `Co-Authored-By: Claude ...` (or any other Claude/Anthropic attribution) to commit messages.**
 
@@ -48,7 +48,7 @@ through services. Schemas never import Django models.
 
 ```
 src/django_atlas/
-├── models/          # 12 ORM models, one file per entity (source, source_product, source_feed,
+├── models/          # ORM models, one file per entity (source, source_product, source_feed,
 │                    #   mapping profile/attribute/category, source_product_link, import_log,
 │                    #   integration_event, source_product_change_log, observation, settings singleton)
 ├── schemas/         # Pydantic: contract.py (RawProduct, PriceStockUpdate), requests/, responses/
@@ -138,20 +138,13 @@ parsed cron fields — NOT `is_due(last_run_at)` (a long-running feed would be r
 Respects `SourceSettings.feed_scheduling_enabled` and per-feed `is_active`; invalid cron strings are
 skipped with a warning.
 
-## Testing
+| Topic | Where |
+|---|---|
+| Lookup provider contract + `duplicate_in_pim` enrichment adapter | `docs/lookup-integration.md` |
+| Connector entry-point protocol and settings | `docs/connectors.md` |
+| Audit / change-log model and retention | `docs/audit-log.md` |
+| Automatic EAN matching rules | `docs/auto-ean-match.md` |
+| Attribute/category mapping modifiers | `docs/mapping-modifiers.md` |
+| ERD diagram config | `docs/erd-config.yaml` |
+| Test database, test apps, SSRF guard in tests | `docs/testing.md` |
 
-Postgres required (`DATABASE_URL`, default `postgresql://postgres:postgres@localhost:5432/test`).
-INSTALLED_APPS in tests: `django_regional`, `django_pim`, `django_atlas` — NOT `django_qms` /
-`django_pricemanager` (soft / out-of-scope). Fixture URLs use `example.com`;
-`ATLAS_BLOCK_PRIVATE_HOSTS = False` in test settings — security tests opt back in via monkeypatch.
-
-## Reference Docs
-
-| File | Content |
-|------|---------|
-| `docs/lookup-integration.md` | Lookup provider contract + `duplicate_in_pim` enrichment adapter |
-| `docs/connectors.md` | Connector entry-point protocol and settings |
-| `docs/audit-log.md` | Audit / change-log model and retention |
-| `docs/auto-ean-match.md` | Automatic EAN matching rules |
-| `docs/mapping-modifiers.md` | Attribute/category mapping modifiers |
-| `docs/erd-config.yaml` | ERD diagram config |
